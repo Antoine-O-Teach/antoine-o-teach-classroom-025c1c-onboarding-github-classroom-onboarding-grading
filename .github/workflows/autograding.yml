@@ -1,0 +1,53 @@
+name: Autograding
+
+on: [push] # Se déclenche à chaque push de l'étudiant
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Récupère le code de l'étudiant
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Met en place l'environnement Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Choisissez la version de Python
+
+      # 3. Installe les dépendances (pytest)
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ÉTAPE 1 : Exécute les tests et sauvegarde le rapport
+      # On sauvegarde la sortie dans un fichier pour l'analyser ensuite
+      - name: Run student tests and measure coverage
+        run: pytest --cov=algos tests/ | tee coverage-summary.txt
+        # Le "tee" permet de voir la sortie dans les logs ET de la sauvegarder
+
+      # ÉTAPE 2 : Analyse le rapport et attribue les points
+      - name: Parse coverage and assign points
+        uses: education/autograding@v1
+        with:
+          tests: |
+            # On cherche la ligne "TOTAL" dans le rapport sauvegardé
+            TOTAL_LINE=$(grep "TOTAL" coverage-summary.txt)
+
+            # On extrait le dernier mot de cette ligne (qui est le pourcentage, ex: "95%")
+            COVERAGE=$(echo "$TOTAL_LINE" | awk '{print $NF}')
+
+            # On enlève le signe '%' pour n'avoir que le nombre
+            PERCENTAGE=${COVERAGE%\%}
+
+            # On vérifie si le pourcentage est supérieur ou égal à 90
+            if [[ $PERCENTAGE -ge 90 ]]; then
+              echo "[10/10] ✅ La couverture de tests est excellente ($PERCENTAGE% >= 90%)."
+            else
+              echo "[0/10] ❌ La couverture de tests est insuffisante ($PERCENTAGE% < 90%)."
+              # On utilise "exit 1" pour que ce test spécifique soit marqué comme échoué
+              # dans le résumé de notation, mais sans arrêter le workflow global.
+              exit 1
+            fi
